@@ -1,0 +1,452 @@
+---
+title: "Tipología y ciclo de vida de los datos: Prática 2"
+output: pdf_document
+author: "Güise Lorenzo Rodríguez Aguiar"
+---
+
+# Detalles de la práctica
+
+## Descripción
+
+En el presente documento se seleccionará un dataset existente de Kaggle para aprender a identificar los datos relevantes para un proyecto analítico y usar las herramientas de integración, limpieza, validación y análisis de las mismas.
+
+## Competencias
+
+En esta práctica se desarrollan las siguientes competencias del Máster de Data Science:
+
+- Capacidad de analizar un problema en el nivel de abstracción adecuado a cada situación y aplicar las habilidades y conocimientos adquiridos para abordarlo y resolverlo.
+
+- Capacidad para aplicar las técnicas específicas de tratamiento de datos (integración, transformación, limpieza y validación) para su posterior análisis.
+
+## Objetivos
+
+Los objetivos concretos de esta práctica son:
+
+- Aprender a aplicar los conocimientos adquiridos y su capacidad de resolución de problemas en entornos nuevos o poco conocidos dentro de contextos más amplios o multidisciplinares.
+
+- Saber identificar los datos relevantes y los tratamientos necesarios (integración, limpieza y validación) para llevar a cabo un proyecto analítico.
+
+- Aprender a analizar los datos adecuadamente para abordar la información contenida en los datos.
+
+- Identificar la mejor representación de los resultados para aportar conclusiones sobre el problema planteado en el proceso analítico.
+
+- Actuar con los principios éticos y legales relacionados con la manipulación de datos en función del ámbito de aplicación.
+
+- Desarrollar las habilidades de aprendizaje que les permitan continuar estudiando de un modo que tendrá que ser 
+en gran medida autodirigido o autónomo.
+
+- Desarrollar la capacidad de búsqueda, gestión y uso de información y recursos en el ámbito de la ciencia de datos.
+
+# Resolución de la práctica
+
+```{r}
+# Importación de librerías
+library(dplyr)
+library(nortest)
+library(randomForest)
+library(data.table)
+library(ggplot2)
+```
+
+
+## Descripción del Dataset
+
+```{r}
+# Guardamos el conjunto de test y train en un único dataframe
+
+test <- read.csv('titanic/test.csv', stringsAsFactors = FALSE)
+train <- read.csv('titanic/train.csv', stringsAsFactors = FALSE)
+
+data <- bind_rows(train,test)
+
+# Verificamos la estructura del dataset
+str(data)
+```
+
+
+El conjunto de datos con el que se realizará la práctica es el correspondiente al barco Titanic y sus datos son relativos a las características de los pasajeros utilizando el enlace de Kaggle proporcionado en el enunciado de la práctica. Este dataset está constituido, como podemos apreciar, por 1309 observaciones con 12 atributos cada una. Estos atributos son los siguientes:
+
+- *PassengerId:* Identificador numérico del pasajero.
+
+- *Survived:* Valor booleano que indica si sobrevivió (1: Sí, 0: No).
+
+- *Pclass:* Clase del billete (1 = primera clase, 2 = segunda clase, 3 = tercera clase).
+
+- *Name:* Nombre del pasajero.
+
+- *Sex:* Sexo del pasajero (male o female) .
+
+- *Age:* Edad del pasajero.
+
+- *SibSp:* Nº de hermanos/cónyuges en el Titanic.
+
+- *Parch:* Nº de padres/hijos en el Titanic.
+
+- *Ticket:* Nº de ticket.
+
+- *Fare:* Tarifa abonada por el pasajero.
+
+- *Cabin:* Nº de cabina.
+
+- *Embarked:* Puerto donde embarcaron los pasajeros (C = Cherbourg, Q = Queenstown, S = Southampton).
+
+## Importancia y objetivos del análisis
+
+En esta práctica se pretende observar qué variables tuvieron más importancia para sobrevivir en el hundimiento del Titanic. Estas variables permitirán crear sistemas inteligentes que clasifiquen las instancias según el valor de Survived teniendo en cuenta como entrada el resto de sus características y realizar, además, contrastes de hipótesis que nos permitan identificar características interesantes de las muestras y que estas puedan ser inferidas con respecto a la población.
+
+
+Este análisis puede ser de gran importancia para observar cómo se comportaba la sociedad de principios del siglo XX cuando una tragedia ocurría, pudiendo servir de complemento a investigaciones históricas realizadas por otras ramas de conocimiento como la psicología, la historia o la propia antropología.
+
+## Integración y selección de los datos de interés a analizar.
+
+En la tarea anterior realizamos la integración de los datos procedentes del conjunto de train y test creado por Kaggle.
+
+En este apartado observamos cómo hay variables como *PassengerId*, *Name*, *Ticket* y *Cabin* que no nos aportan información de interés para nuestra tarea de análisis. Por ello borramos dichos atributos del dataframe con el que trabajamos:
+
+```{r}
+data$PassengerId <- NULL 
+data$Name <- NULL
+data$Ticket <- NULL
+data$Cabin <- NULL
+
+str(data)
+```
+
+De esta manera, usaremos sólo las 7 variables restantes, que pueden observarse en el código superior.
+
+Esperamos al proceso de limpieza de los datos para realizar los procesos de factorización y discretización de las variables, para que sean aplicadas una vez hemos sustituido los valores missing.
+
+
+## Limpieza de los datos
+
+### ¿Los datos contienen ceros o elementos vacíos? ¿Cómo gestionarías cada uno de estos casos?
+
+Observamos los atributos con valores vacíos de la siguiente manera:
+
+```{r}
+colSums(is.na(data))
+colSums(data=="")
+```
+
+Observamos así cómo 418 instancias de nuestro dataset tienen la variable Survived a Null, 283 en el caso de Age y 1 en el caso de Fare. Por otro lado, la variable Embarked tiene dos instancias con una string vacía.
+
+En el caso de Survived, observamos cómo coincide el nº de instancias con valor null con el nº de filas de test que teníamos, es por ello por lo que, en aquellas filas vacías pondremos una nueva clase llamada "NA" (Not available).
+
+En el caso de Age y de Fare reemplazamos los valores perdidos por la media de cada variable en nuestro conjunto de datos. Por último, en el caso de la variable Embarked, al tratarse de solo dos valores nulos lo sustituímos por el valor más frecuente (el puerto del que embarcaron más personas).
+
+```{r}
+data$Survived[is.na(data$Survived)] <- "NA"
+
+data$Age[is.na(data$Age)] <- mean(data$Age, na.rm =T)
+data$Fare[is.na(data$Fare)] <- mean(data$Fare, na.rm =T)
+```
+
+Como podemos observar, el valor más frecuente corresponde al puerto de Southampton. Por lo tanto, utilizamos dicho valor para reemplazarlo.
+
+```{r}
+as.data.frame(table(data$Embarked))
+```
+
+```{r}
+data$Embarked[data$Embarked==""]="S"
+```
+
+### Identificación y tratamiento de valores extremos.
+
+Los outliers o valores extremos son quellos que se diferencian en gran medida del resto de valores del mismo atributo, tanto que si lo viéramos por separado dudaríamos que perteneciera al conjunto original.
+
+Para identificarlos, en la presente práctica utilizaremos la función *boxplots.stats()* de R con cada variable, de forma que se observarán los valores de cada variable que se quedan fuera del rango intercuartílico.
+
+Nos centraremos solo en las variables numéricas que no correspondan a categorías:
+
+```{r}
+boxplot.stats(data$Age)
+```
+
+Observamos cómo los valores que se quedan fuera del rango intercuantílico de la variable son aquellos pocos frecuentes en la época pero, no por ello, incorrectos.
+
+```{r}
+boxplot.stats(data$SibSp)
+```
+```{r}
+boxplot.stats(data$Parch)
+```
+
+Lo mismo ocurre con el nº de hermanos/cónyuges y el nº de padres/hijos. Que los valores se salgan de los percentiles calculados no implica que sean incorrectos.
+
+```{r}
+boxplot.stats(data$Fare)
+```
+
+Por último, observamos un gran número de instancias con un valor de la tarifa abonada por el pasajero que se salen fuera del cuarto percentil. Esto se debe a que estos pasajeros pertenecerán, sin lugar a dudas, a la primera clase del Titanic.
+
+
+### Factorización y discretización de las variables
+
+En este apartado adicional, observaremos en qué variables tendría sentido discretizar sus valores a unas ocas clases:
+
+```{r}
+apply(data,2, function(x) length(unique(x)))
+```
+
+Por ello decidimos discretizar las variables *Survived*, *Pclass*, *Sex* y *Embarked*, ya que tienen pocos valores únicos.
+
+
+```{r}
+values<-c("Survived","Pclass","Sex","Embarked")
+for (i in values){
+  data[,i] <- as.factor(data[,i])
+}
+```
+
+De esta manera, los datos quedarán de la siguiente manera:
+
+```{r}
+str(data)
+```
+
+Debido a que para realizar los posteriores análisis teniendo en cuenta la variable *Survived* nos interesa que dicha variable sea numérica, realizaremos una copia del dataframe con las propiedades actuales en la variable *data_cat* y realizaremos la transformación comentada en el actual dataframe.
+
+También eliminamos las instancias pertenecientes al conjunto de test original (debido a que tienen la clase NA en la variable *Survived*)
+
+```{r}
+data <- data[data$Survived != "NA",]
+data_cat <- copy(data)
+data_cat$Survived <- factor(data_cat$Survived)
+data$Survived <- as.numeric(as.character(data$Survived))
+```
+
+```{r}
+str(data)
+```
+
+
+## Análisis de los datos
+
+### Selección de los grupos de datos que se quieren analizar/comparar 
+
+Dentro de nuestro conjunto de datos hay diferentes grupos que resulta interesante analizar/comparar:
+
+```{r}
+# Agrupación por clase en el barco
+
+data.class1 <- data[data$Pclass == "1",]
+data.class2 <- data[data$Pclass == "2",]
+data.class3 <- data[data$Pclass == "3",]
+
+# Agrupación por sexo
+
+data.male <- data[data$Sex == "male",]
+data.female <- data[data$Sex == "female",]
+
+# Agrupación por el puerto de embarque
+
+data.c <- data[data$Embarked == "C",]
+data.q <- data[data$Embarked == "Q",]
+data.s <- data[data$Embarked == "S",]
+```
+
+En la representación gráfica de los datos mostraremos cómo se comportan estas agrupaciones con respecto a la clase Survival, aunque para ello no se utilizarán los dataframes declarados aquí.
+
+### Comprobación de la normalidad y homogeneidad de la varianza
+
+Para esta tarea se utilizará la librería de R *nortest* (test Anderson-Darling) para comprobar que los valores de las variables numéricas pertenecen a una población que sigue una distribución normal.
+
+Para realizarlo, se verifica que en las pruebas el p-valor es superior al valor prefijado de alpha 0.05. En caso de que esto se cumpla, se considerá que la variable en cuestión sigue una distribución normal.
+
+```{r}
+alpha = 0.05
+columnas = colnames(data)
+
+print("Variables que no siguen una distribución normal:")
+
+for (i in 1:ncol(data)){
+  if (is.numeric(data[,i])){
+    if (ad.test(data[,i])$p.value < alpha){
+      print(columnas[i])
+    }
+  }
+}
+```
+
+También se analiza en este apartado la homogeneidad de varianzas respecto del grupo de hombres del titanic frente a las mujeres. Para ello utilizamos el test de Fligner-Killeen, donde partimos de la hipótesis nula que consiste en que las varianzas son iguales:
+
+```{r}
+fligner.test(Survived ~ Sex, data = data)
+```
+
+Debido a que obtenermos un valor inferior a 0.05, no aceptamos la hipótesis de que ambas muestras son homogéneas.
+
+### Aplicación de pruebas estadísticas para comparar los grupos de datos
+
+#### ¿Podemos predecir la muerte de los pasajeros en base al resto de variables?
+
+En esta tarea observaremos, utilizando para ello un random forest (modelo de clasificación), la importancia que tienen las variables utilizadas para clasificar a los pasajeros según si han sobrevivido o no.
+
+Para ello necesitamos quedarnos solo con las instancias que tengan en el valor de Survived los valores de 0 (No) y 1 (Sí), siendo estos factores. Es por ello, por lo que utilizamos el dataframe data_cat.
+
+Debido a que sólo nos interesa conocer cómo realiza la división de las instancias en base de sus atributos, realizaremos el entrenamiento del modelo con todo el dataset (aunque podremos conocer la capacidad de predicción en base al Out-of-Bag error rate).
+
+```{r}
+summary(data_cat)
+```
+
+De esta manera, realizamos la clasificación de la siguiente forma:
+
+```{r}
+set.seed(2019)
+model <- randomForest(Survived ~ ., data= data_cat, importance = TRUE) 
+model
+```
+
+```{r}
+importance(model)
+```
+
+La columna de MeanDecreaseAccuracy se basa en cuánto accuracy decrece si no se utiliza dicha variable mientras que MeanDecreaseGini ese basa en el descenso de la impuridad de Gini cuando la variable se utiliza en un nodo para realizar la división del dataset.
+
+Según la primera métrica, las variables más importantes son: *Sex*, *Pclass*, *Fare*, *Age* y *SibSp*.
+
+Por otro lado, este orden cambia si nos basamos en los valores de la media de decrecimiento de Gini: *Sex*, *Fare*, *Age*, *Pclass* y *SibSp*.
+
+Damos por hecho que las variables *Pclass* y *Fare* están correlacionadas, ya que a mayor clase en el barco, por lógica, mayor gasto en el ticket. Esta correlación la investigaremos en el apartado de representación gráfica del dataset.
+
+De esta manera, observamos cómo el sexo, el gasto realizado en el billete (o la categoría del mismo), la edad y el nº de hermanos o cónyuges influía en determinar quién se salvaba del hundimiento del barco.
+
+
+#### ¿Qué variables numéticas influyen más en la supervivencia del pasajero?
+
+En este punto, observamos si existen correlaciones entre las variables numéricas de nuestro conjunto de datos.
+
+Para ello seleccionamos las variables numéricas utilizando la función *is.numeric()* junto a *sapply()* y utilizamos dicha selección para filtrar las columnas de nuestro dataset.
+
+Debido a que ninguna de las variables numéricas siguen una distribución normal, hecho indispensable para utilizar el método de correlación de *Pearson*, se ha optado por el método de Spearman.
+
+```{r}
+cor(data[, sapply(data, is.numeric)], method = "spearman")
+```
+
+Así es cómo comprobamos que, aparentemente, ninguna de las variables tienen un nivel de correlación significativa para que sean descartadas o se considere que una influye en otra, tal y cómo planteábamos en el inicio de este apartado.
+
+#### ¿Se puede estimar la edad de los pasajeros del titanic utilizando un modelo de regresión?
+
+Para realizar esta tarea, utilizamos la función *lm* de R.
+
+```{r}
+regresor = lm(Age~., data=data)
+print(regresor)
+```
+
+```{r}
+summary(regresor)
+```
+
+En base a los valores de R cuadrado y el R cuadrado ajustado, podemos verificar que si utilizamos las variables en cuestión, esta regresión lineal no se ajusta a la edad del pasajero. Es por ello por lo que se debería realizar un estudio en mayor profundidad de las variables y probar diferentes modelos.
+
+A continuación, intentaremos realizar la regresión de la variable Age utilizando un Random Forest Regresor.
+Para ello, como en el modelo del clasificador, utilizamos todo el conjunto de datos para el entrenamiento del modelo, ya que lo que más nos interesa de este modelo es conocer la importancia de las diferentes variables para predecir la edad del pasajero.
+
+```{r}
+set.seed(2019)
+model_regresor <- randomForest(Age ~ ., data= data_cat, importance = TRUE) 
+model_regresor
+```
+
+```{r}
+importance(model_regresor)
+```
+
+En este modelo observamos cómo la media de cuadrados residuales y la varianza explicada es bastante elevada para considerar este modelo aceptable. Por ello, consideramos que las variables utilizadas no permiten al modelo estimar correctamente la edad de los pasajeros.
+
+Respecto a la importancia de las variables, observamos cómo las variables que más incrementan el error cuadrático medio de nuestro modelo son *Parch*, *Pclass* y *SibSp*. Sin embargo, al no representar este modelo la realidad debido a su incapacidad de explicar la varianza de la variable edad, estos resultados de importancia no son fiables.
+
+```{r}
+str(data_cat)
+```
+
+## Representación de los resultados a partir de tablas y gráficas.
+
+En esta table enfrentaremos, en primer lugar las variables Pclass, Sex y Embarked frente a Survived:
+
+```{r}
+ggplot(data = data_cat[1:dim(data_cat)[1],],aes(x=Pclass,fill=Survived))+geom_bar(position="fill")+ylab("Frecuencia")
+```
+
+En esta gráfica podemos observar la correlación entre estar en una clase de mayor categoría y la mayor probabilidad de salvarse del hundimiento del Titanic.
+
+```{r}
+ggplot(data = data_cat[1:dim(data_cat)[1],],aes(x=Sex,fill=Survived))+geom_bar(position="fill")+ylab("Frecuencia")
+```
+
+Por otro lado, observamos cómo casi el 75% de las mujeres se salvaron del accidente mientras que menos del 25% de los hombres lograron sobrevivir.
+
+```{r}
+ggplot(data = data_cat[1:dim(data_cat)[1],],aes(x=Embarked,fill=Survived))+geom_bar(position="fill")+ylab("Frecuencia")
+```
+
+En esta gráfica, podemos observar cómo los pasajeros que embarcaron del puerto de Cherbourg tenían más probabilidades de salvarse que aquellos que embarcaron en los otros puertos. Seguramente se deba al nº de familias con niños o de mujeres que embarcaron desde dicho puerto.
+
+Para comprobar la última hipótesis, realizamos las siguientes gráficas:
+
+```{r}
+ggplot(data = data_cat[1:dim(data_cat)[1],],aes(x=Embarked,fill=Survived))+geom_bar(position="fill")+facet_wrap(~Pclass)+ylab("Frecuencia")
+```
+
+```{r}
+ggplot(data = data_cat[1:nrow(data_cat),],aes(x=Embarked,fill=Sex))+geom_bar()+facet_wrap(~Pclass)
+```
+
+A pesar de que creíamos que se debía al nº de mujeres o de niños que embarcaron en el puerto de Cherbourg, estas últimas gráficas nos hacen creer en la hipotesis de que los hombres de C fueron alojados en camarotes mejor posicionados en el proceso de desembarco del Titanic, pudiendo salvarse en gran medida junto a las mujeres.
+
+A continuaciñon observaremos cómo se distribuye la tasa de supervivientes en las diferentes edades de los pasajeros:
+
+```{r}
+ggplot(data = data_cat[!(is.na(data_cat[1:dim(data_cat)[1],]$Age)),],aes(x=Age,fill=Survived))+geom_histogram(binwidth =3)+ylab("Frecuencia")
+```
+
+Es en esta gráfica donde se observa que, los menores de 15 años tenían mayor probabilidad de salvarse que el resto de las personas del barco.
+
+Por último, comprobamos visualmente que la variable Pclass y Fare están correlacionadas, como nos indica la lógica:
+
+```{r}
+ggplot(data = data_cat[!(is.na(data_cat[1:dim(data_cat)[1],]$Fare)),],aes(x=Fare,fill=Pclass))+geom_histogram(binwidth =10)+ylab("Frecuencia")
+```
+
+Por mencionar alguna de las tablas con las que hemos trabajado en los anteriores apartados, en en modelo de clasificación descubrimos que las variables *Sex*, *Pclass*, *Fare*, *Age* y *SibSp* eran a las que el modelo otorgaba una mayor importancia. 
+
+Por otro lado, aunque el modelo de regresión con Random Forest no era aceptable, indicaba que Parch, Pclass y SibSp eran las variables que mayor información aportaban para realizar la regresión correctamente.
+
+## Resolución del problema.
+
+Aunque la resolución de las diferentes cuestiones planteadas al principio de esta práctica se han explicado en los diferentes apartados desarrollados en la misma, se aprovechará este apartado para resumirlas:
+
+* Las variables han permitido al modelo de clasificación determinar con un valor bajo de error (para ser un clasificador inicial) qué pasajeros sobrevivieron.
+
+* Las variables numéricas seleccionadas no siguen una distribución normal.
+
+* No se han encontrado variables numéricas correlacionadas entre sí, aunque la que mayor valor de correlación tiene con Survived es Fare, es decir, el coste del billete. Esto también lo hemos deducido de las gráficas que enfrentan Pclass y Survived.
+
+* También hemos comprobado que, para ninguno de nuestros dos modelos regresores, el resto de variables permiten predecir de forma aceptable la edad de los pasajeros.
+
+* En la visualización gráfica, hemos comprobado cómo están correlacionadas las variables *Pclass*, *Sex* y *Age*, tal y cómo mostraba la función *importance* al pasarle por parámetro el modelo de Random Forest de clasificación utilizado.
+
+# Código
+
+El código se encuentra disponible en el presente fichero, que está disponible tanto en formato pdf como Rmd. Este último formato se ofrece para la ejecución y la comprobación de los resultados.
+
+También está disponible en el respositorio los datos originales y los datos finales con los que se ha trabajado.
+
+```{r}
+write.csv(data, file = "titanic_modified.csv")
+```
+
+
+# Componentes del proyecto
+
+Debido a que trabajo y a que mis horarios me complican coordinarme con otras personas, la profesora colaboradora de la asignatura me autorizó por email realizar la práctica de forma individual sin penalización.
+
+|        Contribuciones       | Firma |
+|:---------------------------:|:-----:|
+|     Investigación Previa    |  GLRA |
+| Redacción de las respuestas |  GLRA |
+|      Desarrollo código      |  GLRA |
